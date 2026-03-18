@@ -1,0 +1,7 @@
+{
+  "name": "AIparameter Pro_Max_e_scanstd_4.0.16",
+  "description": "Link từ LSX -\u003e Tên sản phẩm -\u003e cấu trúc ",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
