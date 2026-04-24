@@ -250,12 +250,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
 
   const selectedPreset = useMemo(() => {
     if (filterProduct === 'all') return null;
-    // Try to match preset with input product name, though input might differ slightly
-    return presets.find(p => p.productName === filterProduct);
-  }, [filterProduct, presets]);
+    return presets.find(p => p.productName === filterProduct && (filterMachineId === 'all' || p.machineId === filterMachineId))
+      || presets.find(p => p.productName === filterProduct);
+  }, [filterProduct, presets, filterMachineId]);
 
   const activeToleranceValue = useMemo(() => {
-    return selectedPreset?.tolerances?.[selectedChartField] ?? getDefaultTolerance(selectedChartField);
+    const rawTol = selectedPreset?.tolerances?.[selectedChartField];
+    return (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(selectedChartField);
   }, [selectedPreset, selectedChartField]);
 
   const chartData = useMemo(() => {
@@ -624,7 +625,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-11 gap-2 overflow-x-auto no-scrollbar pb-1">
                   {Object.entries(selectedPreset.data).map(([key, val]) => {
                     const isSelected = key === selectedChartField;
-                    const tol = selectedPreset.tolerances?.[key] ?? getDefaultTolerance(key);
+                    const rawTol = selectedPreset.tolerances?.[key];
+                    const tol = (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(key);
                     return (
                       <div 
                         key={key} 
@@ -762,7 +764,13 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
   const user = log.uploadedBy || log["User"] || log["Người gửi"] || "N/A";
   const lotName = log.productionOrder || log["ProductionOrder"] || log["Lệnh sản xuất"] || log["Lệnh SX"] || log["LSX"] || log["Lot"] || "N/A";
 
-  const currentPreset = presets.find(p => p.productName === pName);
+  const pStd = log.productStd || log["Product_Std"] || log["ProductStd"] || pName;
+  const sStd = log.structureStd || log["Structure_Std"] || log["StructureStd"] || sName;
+
+  const currentPreset = presets.find(p => p.productName === pStd && p.structure === sStd && (!p.machineId || p.machineId === mId)) 
+    || presets.find(p => p.productName === pStd && (!p.machineId || p.machineId === mId))
+    || presets.find(p => p.productName === pStd)
+    || presets.find(p => p.productName === pName);
   
   const logDataKeys = useMemo(() => {
     return availableFields.filter(f => {
@@ -810,7 +818,8 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
                     diff = parseFloat((val - std).toFixed(2));
                 }
 
-                const tol = currentPreset?.tolerances?.[f] ?? getDefaultTolerance(f);
+                const rawTol = currentPreset?.tolerances?.[f];
+                const tol = (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(f);
                 const diffAbs = Math.abs(diff);
 
                 let borderColor = 'border-slate-800';
@@ -851,7 +860,8 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
                     diff = parseFloat((val - std).toFixed(2));
                 }
 
-                const tol = currentPreset?.tolerances?.[f] ?? getDefaultTolerance(f);
+                const rawTol = currentPreset?.tolerances?.[f];
+                const tol = (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(f);
                 const diffAbs = Math.abs(diff);
 
                 let borderColor = 'border-slate-800';
