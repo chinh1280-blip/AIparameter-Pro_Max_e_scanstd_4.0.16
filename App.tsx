@@ -210,7 +210,8 @@ const App: React.FC = () => {
         }
         if (resData.logs) setHistoricalLogs(resData.logs);
         if (resData.machines) {
-          const sortedMachines = [...resData.machines].sort((a, b) => (a.order || 0) - (b.order || 0));
+          const uniqueMachines = Array.from(new Map((resData.machines as Machine[]).map(m => [m.id, m])).values());
+          const sortedMachines = uniqueMachines.sort((a, b) => (a.order || 0) - (b.order || 0));
           setMachines(sortedMachines);
         }
         if (resData.labels) setFieldLabels(prev => ({ ...prev, ...resData.labels }));

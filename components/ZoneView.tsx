@@ -3,7 +3,7 @@ import { ImageUploader } from './ImageUploader';
 import { DataCard } from './DataCard';
 import { ProcessingState, StandardDataMap, ProductPreset, ZoneDefinition, ImageProcessingProfile, DEFAULT_PROCESSING_PROFILES, getDefaultTolerance } from '../types';
 import { analyzeImage } from '../services/geminiService';
-import { Trash2, Info, CheckCircle2, Eye, EyeOff, Scan, X, LayoutGrid, List, Check, RotateCcw, Filter } from 'lucide-react';
+import { Trash2, Info, CheckCircle2, Eye, EyeOff, Scan, X, LayoutGrid, List, Check, RotateCcw, Filter, RefreshCcw } from 'lucide-react';
 
 /**
  * === FIX v2 - Sửa lỗi hiển thị ===
@@ -136,6 +136,34 @@ export const ZoneView: React.FC<ZoneViewProps> = React.memo(({
     }
   };
 
+  const handleRetry = async () => {
+    setState({ ...state, isAnalyzing: true, error: null });
+    try {
+        const base64List = imagesConfig.map(img => processedImageUrls[img.id]);
+        const activeModel = zone.modelId || modelName;
+
+        let processingProfileId: string | undefined;
+        for (const img of imagesConfig) {
+            if (img.processingProfileId) {
+                processingProfileId = img.processingProfileId;
+                break;
+            }
+        }
+
+        const result = await analyzeImage(base64List, zone.prompt, zone.schema, activeModel, apiKey, processingProfileId, processingProfiles);
+        setData(result);
+        if (navigator.vibrate) navigator.vibrate(200);
+        setState({ ...state, isAnalyzing: false, error: null });
+    } catch (err: any) {
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 100]);
+        setState({ 
+          ...state, 
+          isAnalyzing: false, 
+          error: err.message || "Không thể đọc dữ liệu. Vui lòng chụp lại ảnh rõ nét hơn."
+        });
+    }
+  };
+
   const handleClearImage = (imageId: string) => {
     const newImageUrls = { ...imageUrls };
     const newProcessedImageUrls = { ...processedImageUrls };
@@ -205,11 +233,28 @@ export const ZoneView: React.FC<ZoneViewProps> = React.memo(({
         </div>
 
         {state.error && (
-          <div className="mb-4 bg-red-500/10 border border-red-500/30 text-red-200 p-3 rounded-xl text-sm font-bold flex items-start gap-3">
-            <span className="text-xl">⚠️</span> 
-            <div>
-              <p className="mb-0.5">{state.error}</p>
-              <p className="text-red-400 text-xs">Hãy chụp lại ảnh rõ nét hơn, đủ sáng.</p>
+          <div className="mb-4 bg-red-500/10 border border-red-500/30 text-red-200 p-4 rounded-xl text-sm font-bold flex flex-col gap-3">
+            <div className="flex items-start gap-3">
+                <span className="text-xl">⚠️</span> 
+                <div className="w-full">
+                  {state.error.split('\n').map((line, i) => (
+                    <p key={i} className={`mb-0.5 ${i > 0 ? 'text-red-400 text-xs mt-1' : ''}`}>{line}</p>
+                  ))}
+                </div>
+            </div>
+            <div className="mt-2 pt-3 border-t border-red-500/20 flex flex-col sm:flex-row items-center gap-3">
+                {state.error.toLowerCase().includes('quota') || state.error.toLowerCase().includes('key') || state.error.toLowerCase().includes('fetch') ? (
+                    <p className="text-xs text-red-300 flex-1">Gợi ý: Đổi API Key khác ở mục Cài đặt và nhấn Thử Lại.</p>
+                ) : (
+                    <p className="text-xs text-red-300 flex-1">Gợi ý: Nhấn Thử Lại nếu ảnh đã rõ nét, hoặc xóa ảnh để chụp lại.</p>
+                )}
+                <button 
+                  onClick={handleRetry}
+                  disabled={state.isAnalyzing}
+                  className={`w-full sm:w-auto px-4 py-2 text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all rounded-lg border ${state.isAnalyzing ? 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed' : 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30 text-red-300 active:scale-95'}`}
+                >
+                  <RefreshCcw size={14} className={state.isAnalyzing ? "animate-spin" : ""} /> THỬ LẠI LẤY MẪU
+                </button>
             </div>
           </div>
         )}

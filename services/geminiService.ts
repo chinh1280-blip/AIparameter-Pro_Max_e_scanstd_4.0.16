@@ -212,9 +212,24 @@ export const analyzeImage = async (
     return JSON.parse(text);
   } catch (error: any) {
     console.error(`Gemini API Error:`, error);
-    if (error.message?.toLowerCase().includes("invalid argument")) {
-      throw new Error("Lỗi cấu hình (400): Schema chứa thuộc tính không hợp lệ (ví dụ: enum cho kiểu số). Vui lòng kiểm tra lại JSON Schema.");
+    const msg = error.message?.toLowerCase() || '';
+
+    if (msg.includes("invalid argument") || msg.includes("schema")) {
+      throw new Error("Error: Invalid schema format / Lỗi cấu hình Schema\nSolution: Check Output");
     }
-    throw error;
+    if (msg.includes("quota exceeded") || msg.includes("too many requests") || msg.includes("429")) {
+      throw new Error("Error: Too Many Requests hoặc Quota exceeded / Quá giới hạn request\nSolution: Wait a few minutes and try again, use a different API Key / Đợi 1-2 phút hoặc đổi mã QA");
+    }
+    if (msg.includes("api key") || msg.includes("api_key") || msg.includes("unauthenticated") || msg.includes("key_invalid") || msg.includes("not valid")) {
+      throw new Error("Error: API key not valid / Khóa API không hợp lệ\nSolution: Liên hệ ADMIN");
+    }
+    if (msg.includes("500") || msg.includes("503") || msg.includes("internal server") || msg.includes("service unavailable") || msg.includes("fetch failed") || msg.includes("network_error")) {
+      throw new Error("Error: 500 Internal Server Error or 503 Service Unavailable / Đường truyền mạng tới GG bị gián đoạn\nSolution: Please wait and try again later / Vui lòng bấm thử tải lại sau vài phút");
+    }
+    if (msg.includes("safety") || msg.includes("blocked") || msg.includes("candidate was blocked")) {
+      throw new Error("Error: Safety Violation\nSolution: Change the camera angle or crop the photo strictly / Đặt camera bắt gọn bảng thông số");
+    }
+
+    throw new Error("Error: Unclear image - No Response / Hình ảnh không rõ ràng\nSolution: Retake the photo from a straight angle / Chụp lại ảnh với ánh sáng tốt hơn, góc chụp thẳng");
   }
 };

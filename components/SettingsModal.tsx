@@ -95,7 +95,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [expandedMachines, setExpandedMachines] = useState<Record<string, boolean>>({});
 
   // New state for Scan Options Selection
-  const [scanOptions, setScanOptions] = useState<any[]>([]);
+  interface PendingScanOption {
+      id: string;
+      selected: boolean;
+      expanded: boolean;
+      productName: string;
+      structure: string;
+      data: StandardDataMap;
+      tolerances: StandardDataMap;
+  }
+  const [pendingScanOptions, setPendingScanOptions] = useState<PendingScanOption[]>([]);
   const [showScanSelection, setShowScanSelection] = useState(false);
   const [scanCommonInfo, setScanCommonInfo] = useState<any>({});
 
@@ -168,7 +177,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setShowPinScreen(false);
         setActiveTab('manage'); // Reset to unlocked tab
         setShowScanSelection(false);
-        setScanOptions([]);
+        setPendingScanOptions([]);
         setScanCommonInfo({});
     }
   }, [isOpen]);
@@ -354,6 +363,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     } catch (error) { showToast("Lỗi kết nối", "error"); } finally { setIsSavingCloud(false); }
   };
 
+  const handleSaveMultiScan = async () => {
+      if (!currentMachineId) return;
+      const selectedOptions = pendingScanOptions.filter(o => o.selected);
+      if (selectedOptions.length === 0) return;
+      
+      setIsSavingCloud(true);
+      let successCount = 0;
+      try {
+        for (const opt of selectedOptions) {
+          const payload = {
+            action: "save_standard",
+            id: `std_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            productName: opt.productName.trim(), 
+            structure: opt.structure.trim(), 
+            data: opt.data, 
+            tolerances: opt.tolerances, 
+            machineId: currentMachineId
+          };
+
+          await fetch(googleSheetUrl, {
+            method: 'POST', mode: 'no-cors',
+            body: JSON.stringify(payload)
+          });
+          
+          await new Promise(r => setTimeout(r, 500)); 
+          successCount++;
+        }
+        
+        await onRefreshPresets();
+        setShowScanSelection(false);
+        showToast(`Đã lưu thành công ${successCount} thông số!`, "success");
+      } catch (error) { 
+        showToast("Lỗi kết nối", "error"); 
+      } finally { 
+        setIsSavingCloud(false); 
+      }
+  };
+
   const handleSyncLabelsCloud = async () => {
     if (!googleSheetUrl) return;
     setIsSyncingLabels(true);
@@ -462,20 +509,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           const { options, ...commonData } = result;
           
           // Check for new structure with options
-          if (options && Array.isArray(options) && options.length > 0) {
-             if (options.length === 1) {
-                 // Only 1 option, apply directly
-                 applyScanResult(options[0], commonData);
-             } else {
-                 // Multiple options, show selection
-                 setScanCommonInfo(commonData);
-                 setScanOptions(options);
-                 setShowScanSelection(true);
-             }
-          } else {
-             // Fallback to old flat structure (treat result as both common and option)
-             applyScanResult(result, {});
+          let optionsList = options;
+          if (!optionsList || !Array.isArray(optionsList) || optionsList.length === 0) {
+              optionsList = [{}];
           }
+
+          const pendingArr = optionsList.map((opt: any, idx: number) => {
+              let pName = opt.productName || opt.Ten_San_Pham || commonData.productName || commonData.Ten_San_Pham || '';
+              const struct = opt.structure || opt.Cau_Truc || commonData.structure || commonData.Cau_Truc || '';
+              let template = commonData.Ten_San_Pham_Template || commonData.productNameTemplate || opt.Ten_San_Pham_Template || '';
+              
+              if (!template && pName && (pName.includes('{{FILM_WIDTH}}') || pName.includes('{{film_width}}'))) {
+                  template = pName;
+              }
+
+              const filmWidth = opt.filmWidth || commonData.filmWidth || '';
+              const resinType = opt.resinType || commonData.resinType || '';
+              
+              if (template && filmWidth) {
+                  pName = template.replace(/\{\{FILM_WIDTH\}\}/gi, filmWidth);
+              }
+              if (template && resinType) {
+                  pName = (pName || template).replace(/\{\{RESIN_TYPE\}\}/gi, resinType);
+              }
+
+              const mappedData: StandardDataMap = {};
+              const mappedTols: StandardDataMap = {};
+
+              const processFields = (source: any) => {
+                  if (!source) return;
+                  Object.entries(source).forEach(([key, val]: [string, any]) => {
+                    if (key === 'options' || key === 'data') return;
+                    if (currentMachineSchemaKeys.includes(key) && val && typeof val === 'object' && val.std !== undefined) {
+                      mappedData[key] = val.std;
+                      mappedTols[key] = val.tol;
+                    }
+                  });
+              };
+              
+              processFields(commonData);
+              processFields(opt.data || opt);
+              
+              return {
+                 id: `scan_${Date.now()}_${idx}`,
+                 selected: true,
+                 expanded: false,
+                 productName: pName,
+                 structure: struct,
+                 data: mappedData,
+                 tolerances: mappedTols
+              };
+          });
+
+          setPendingScanOptions(pendingArr);
+          setShowScanSelection(true);
         }
       } catch (err: any) {
         showToast("Lỗi Scan: " + err.message, "error");
@@ -544,35 +631,110 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           
           {/* Scan Selection Overlay */}
           {showScanSelection ? (
-            <div className="absolute inset-0 bg-slate-900 z-50 flex flex-col p-6 animate-fade-in overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
+            <div className="absolute inset-0 bg-slate-900 z-50 flex flex-col animate-fade-in">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                <div className="flex items-center justify-between mb-4">
                     <h3 className="text-white font-black text-lg uppercase flex items-center gap-2">
                         <Scan size={20} className="text-cyan-400" />
-                        Chọn Khổ Màng
+                        Duyệt Thông Số ({pendingScanOptions.filter(o => o.selected).length}/{pendingScanOptions.length})
                     </h3>
                     <button onClick={() => setShowScanSelection(false)} className="p-2 bg-slate-800 rounded-full hover:bg-slate-700"><X size={16}/></button>
                 </div>
-                <p className="text-slate-400 text-xs mb-4">AI đã tìm thấy nhiều dải khổ màng trong bảng Lực Căng. Vui lòng chọn một dải để áp dụng thông số.</p>
+                <p className="text-slate-400 text-xs mb-4">AI đã trích xuất danh sách thông số. Bạn có thể xem lại, chỉnh sửa, và chọn các thông số muốn lưu.</p>
                 
                 <div className="grid grid-cols-1 gap-3">
-                    {scanOptions.map((opt, idx) => (
-                        <button 
-                            key={idx}
-                            onClick={() => applyScanResult(opt, scanCommonInfo)}
-                            className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between hover:bg-blue-600/20 hover:border-blue-500 transition-all group text-left"
-                        >
-                            <div>
-                                <p className="text-xs font-black text-white uppercase mb-1">
-                                    {opt.resinType ? `Hạt nhựa: ${opt.resinType}` : `Khổ: ${opt.filmWidth || "Không xác định"}`}
-                                </p>
-                                <p className="text-[10px] text-slate-500 font-mono">{Object.keys(opt.data || opt).length} thông số</p>
+                    {pendingScanOptions.map(opt => {
+                        return (
+                            <div key={opt.id} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col transition-all">
+                                <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-800/80" onClick={(e) => { e.stopPropagation(); setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, selected: !po.selected } : po)); }}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${opt.selected ? 'bg-blue-500 border-blue-500' : 'bg-slate-900 border-slate-600'}`}>
+                                            {opt.selected && <Check size={14} className="text-white" />}
+                                        </div>
+                                        <div>
+                                            <p className={`text-xs font-black uppercase ${opt.selected ? 'text-white' : 'text-slate-500'}`}>
+                                                {opt.productName || "CHƯA CÓ TÊN SẢN PHẨM"}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 mt-0.5">{opt.structure || "Chưa có cấu trúc"}</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, expanded: !po.expanded } : po)); }}
+                                      className={`px-3 py-1.5 hover:bg-slate-900 rounded border text-[9px] uppercase font-bold flex items-center gap-1 ${opt.expanded ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' : 'bg-slate-900/50 text-slate-400 border-slate-700'}`}
+                                    >
+                                      {opt.expanded ? <ChevronUp size={12}/> : <ChevronDown size={12}/>} Sửa
+                                    </button>
+                                </div>
+                                
+                                {opt.expanded && (
+                                    <div className="p-4 border-t border-slate-700 bg-slate-900/30 space-y-4">
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tên Sản Phẩm</label>
+                                                <input 
+                                                    value={opt.productName} 
+                                                    onChange={e => setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, productName: e.target.value } : po))}
+                                                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white font-bold outline-none focus:border-blue-500/50" 
+                                                    placeholder="Ví dụ: TÚI PE 100 x 200..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Cấu Trúc</label>
+                                                <input 
+                                                    value={opt.structure} 
+                                                    onChange={e => setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, structure: e.target.value } : po))}
+                                                    className="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white font-bold outline-none focus:border-blue-500/50" 
+                                                    placeholder="Ví dụ: LLDPE, PET/CPP..."
+                                                />
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-slate-950/40 p-3 rounded border border-slate-800/60 space-y-2">
+                                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest pb-1 border-b border-slate-800">Thông Số ({currentMachineSchemaKeys.length})</p>
+                                            {currentMachineSchemaKeys.map(fk => (
+                                                <div key={fk} className="flex items-center gap-2">
+                                                  <label className="flex-1 text-[10px] text-slate-300 font-black uppercase truncate tracking-tighter">{fieldLabels[fk] || fk}</label>
+                                                  <input 
+                                                    type="number" step="0.1" 
+                                                    value={opt.data[fk] !== undefined ? opt.data[fk] : ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                                        setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, data: { ...po.data, [fk]: val } } : po));
+                                                    }}
+                                                    className="w-14 sm:w-16 bg-slate-900 border border-slate-700 rounded-lg p-1.5 sm:p-2 text-white text-[10px] text-center font-bold outline-none focus:border-blue-500/30" 
+                                                    placeholder="Std" 
+                                                  />
+                                                  <input 
+                                                    type="number" step="0.1" 
+                                                    value={opt.tolerances[fk] !== undefined ? opt.tolerances[fk] : ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                                        setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, tolerances: { ...po.tolerances, [fk]: val } } : po));
+                                                    }}
+                                                    className="w-14 sm:w-16 bg-slate-900 border border-slate-700 rounded-lg p-1.5 sm:p-2 text-slate-400 text-[10px] text-center font-bold outline-none focus:border-blue-500/30" 
+                                                    placeholder="±" 
+                                                  />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center border border-slate-700 group-hover:border-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all">
-                                <Check size={16} />
-                            </div>
-                        </button>
-                    ))}
+                        );
+                    })}
                 </div>
+              </div>
+              
+              <div className="p-6 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 flex-shrink-0 relative z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                  <button 
+                    onClick={handleSaveMultiScan}
+                    disabled={pendingScanOptions.filter(o => o.selected).length === 0 || isSavingCloud}
+                    className={`w-full py-4 rounded-2xl font-black uppercase text-[11px] tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg ${pendingScanOptions.filter(o => o.selected).length > 0 && !isSavingCloud ? 'bg-green-600 text-white active:scale-95' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
+                  >
+                    {isSavingCloud ? <RefreshCw className="animate-spin" size={18}/> : <Save size={18}/>} 
+                    Lưu {pendingScanOptions.filter(o => o.selected).length} mục đã chọn
+                  </button>
+              </div>
             </div>
           ) : showPinScreen ? (
             <div className="absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 animate-fade-in">
