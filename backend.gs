@@ -421,9 +421,17 @@ function getMachines(ss) {
 }
 
 function saveMachines(ss, machines) {
-  const sheet = getOrCreateSheet(ss, "Machines");
-  sheet.clear().appendRow(["MachineConfigJSON"]);
-  machines.forEach(m => sheet.appendRow([JSON.stringify(m)]));
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = getOrCreateSheet(ss, "Machines");
+    sheet.clear().appendRow(["MachineConfigJSON"]);
+    machines.forEach(m => sheet.appendRow([JSON.stringify(m)]));
+  } catch (e) {
+    console.error("Lock error", e);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function getPresetsForMachine(ss, machine) {
@@ -452,7 +460,13 @@ function getLogsForMachine(ss, machine) {
   const headers = data[0];
   return data.slice(1).map(row => {
     let obj = { machineId: machine.id };
-    headers.forEach((h, i) => obj[h] = row[i]);
+    headers.forEach((h, i) => {
+      let val = row[i];
+      if (val instanceof Date) {
+        val = Utilities.formatDate(val, ss.getSpreadsheetTimeZone(), "dd/MM/yyyy HH:mm:ss");
+      }
+      obj[h] = val;
+    });
     return obj;
   });
 }

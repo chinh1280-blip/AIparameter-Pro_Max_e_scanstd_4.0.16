@@ -342,9 +342,17 @@ const App: React.FC = () => {
              const diff = parseFloat(((val as number) - std).toFixed(2));
              payload[`diff_${key}`] = diff;
              
-             const tolerance = currentPreset?.tolerances?.[key] ?? getDefaultTolerance(key);
+             const rawTol = currentPreset?.tolerances?.[key];
+             const isMaxMode = rawTol === '<';
+             const tolerance = isMaxMode ? getDefaultTolerance(key) : (rawTol ?? getDefaultTolerance(key));
              const diffAbs = Math.abs((val as number) - std);
-             const isCorrect = diffAbs <= tolerance;
+             
+             let isCorrect = true;
+             if (isMaxMode) {
+                 isCorrect = (val as number) <= std;
+             } else {
+                 isCorrect = diffAbs <= (tolerance as number);
+             }
              
              if (!isCorrect) {
                 hasError = true;
@@ -354,7 +362,7 @@ const App: React.FC = () => {
              errorDetails.push({
                 name: fieldLabels[key] || key,
                 value: val,
-                std: `${std} ±${tolerance}`,
+                std: isMaxMode ? `≤ ${std}` : `${std} ±${tolerance}`,
                 diff: diff > 0 ? `+${diff}` : diff,
                 isCorrect: isCorrect
              });

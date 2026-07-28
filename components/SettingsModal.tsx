@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Save, Link, Plus, Trash2, Check, Layers, RefreshCw, Key, BrainCircuit, Edit3, Trash, Settings2, Box, Search, Copy, Tag, Database, Cloud, Cpu, Monitor, Scan, Lock, Palette, Sun, Moon, Type, Info, Sliders, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Eye, EyeOff } from 'lucide-react';
-import { StandardDataMap, ProductPreset, ModelConfig, Machine, ZoneDefinition, ScanConfig, UIConfig, DEFAULT_UI_CONFIG, ImageProcessingProfile, DEFAULT_PROCESSING_PROFILES } from '../types';
+import { StandardDataMap, ProductPreset, ModelConfig, Machine, ZoneDefinition, ScanConfig, UIConfig, DEFAULT_UI_CONFIG, ImageProcessingProfile, DEFAULT_PROCESSING_PROFILES, getDefaultTolerance } from '../types';
 import { analyzeImage } from '../services/geminiService';
 
 interface SettingsModalProps {
@@ -218,6 +218,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const schema = typeof zone.schema === 'string' ? JSON.parse(zone.schema) : zone.schema;
         if (schema.properties) {
           Object.keys(schema.properties).forEach(k => keys.add(k));
+        } else if (schema && typeof schema === 'object') {
+          // Fallback if schema is just a flat mapping object
+          Object.keys(schema).forEach(k => keys.add(k));
         }
       } catch (e) {}
     });
@@ -465,9 +468,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const processFields = (source: any) => {
           Object.entries(source).forEach(([key, val]: [string, any]) => {
             if (key === 'options' || key === 'data') return; // Skip metadata
-            if (val && typeof val === 'object' && val.std !== undefined) {
-              mappedData[key] = val.std;
-              mappedTols[key] = val.tol;
+            if (val !== null && val !== undefined) {
+              if (typeof val === 'object' && val.std !== undefined) {
+                mappedData[key] = val.std;
+                mappedTols[key] = val.tol;
+              } else if (typeof val === 'number' || typeof val === 'string') {
+                const numVal = typeof val === 'string' ? parseFloat(val) : val;
+                if (!isNaN(numVal)) {
+                  mappedData[key] = numVal;
+                  mappedTols[key] = getDefaultTolerance(key);
+                }
+              }
             }
           });
       };
@@ -540,9 +551,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   if (!source) return;
                   Object.entries(source).forEach(([key, val]: [string, any]) => {
                     if (key === 'options' || key === 'data') return;
-                    if (currentMachineSchemaKeys.includes(key) && val && typeof val === 'object' && val.std !== undefined) {
-                      mappedData[key] = val.std;
-                      mappedTols[key] = val.tol;
+                    if (currentMachineSchemaKeys.includes(key) && val !== null && val !== undefined) {
+                      if (typeof val === 'object' && val.std !== undefined) {
+                        mappedData[key] = val.std;
+                        mappedTols[key] = val.tol;
+                      } else if (typeof val === 'number' || typeof val === 'string') {
+                        const numVal = typeof val === 'string' ? parseFloat(val) : val;
+                        if (!isNaN(numVal)) {
+                          mappedData[key] = numVal;
+                          mappedTols[key] = getDefaultTolerance(key);
+                        }
+                      }
                     }
                   });
               };
@@ -704,16 +723,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                     className="w-14 sm:w-16 bg-slate-900 border border-slate-700 rounded-lg p-1.5 sm:p-2 text-white text-[10px] text-center font-bold outline-none focus:border-blue-500/30" 
                                                     placeholder="Std" 
                                                   />
-                                                  <input 
-                                                    type="number" step="0.1" 
-                                                    value={opt.tolerances[fk] !== undefined ? opt.tolerances[fk] : ''} 
-                                                    onChange={e => {
-                                                        const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                                                        setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, tolerances: { ...po.tolerances, [fk]: val } } : po));
-                                                    }}
-                                                    className="w-14 sm:w-16 bg-slate-900 border border-slate-700 rounded-lg p-1.5 sm:p-2 text-slate-400 text-[10px] text-center font-bold outline-none focus:border-blue-500/30" 
-                                                    placeholder="±" 
-                                                  />
+                                                  <div className="flex items-center gap-1">
+                                                    <button 
+                                                      type="button"
+                                                      onClick={() => {
+                                                          const isMaxMode = opt.tolerances[fk] === '<';
+                                                          setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, tolerances: { ...po.tolerances, [fk]: isMaxMode ? getDefaultTolerance(fk) : '<' } } : po));
+                                                      }}
+                                                      className={`w-6 flex items-center justify-center rounded-lg border border-slate-700 p-1.5 sm:p-2 text-[10px] font-bold ${opt.tolerances[fk] === '<' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-900 text-slate-500'}`}
+                                                    >
+                                                      {opt.tolerances[fk] === '<' ? '≤' : '±'}
+                                                    </button>
+                                                    {opt.tolerances[fk] !== '<' && (
+                                                      <input 
+                                                        type="number" step="0.1" 
+                                                        value={opt.tolerances[fk] !== undefined ? opt.tolerances[fk] : ''} 
+                                                        onChange={e => {
+                                                            const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                                            setPendingScanOptions(pendingScanOptions.map(po => po.id === opt.id ? { ...po, tolerances: { ...po.tolerances, [fk]: val } } : po));
+                                                        }}
+                                                        className="w-12 sm:w-14 bg-slate-900 border border-slate-700 rounded-lg p-1.5 sm:p-2 text-slate-400 text-[10px] text-center font-bold outline-none focus:border-blue-500/30" 
+                                                        placeholder="tol" 
+                                                      />
+                                                    )}
+                                                  </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -898,7 +931,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div key={fk} className="flex items-center gap-2">
                               <label className="flex-1 text-[10px] text-slate-200 font-black uppercase truncate tracking-tighter">{fieldLabels[fk] || fk}</label>
                               <input type="number" step="0.1" value={newData[fk] ?? ''} onChange={e => setNewData({...newData, [fk]: e.target.value === '' ? undefined : parseFloat(e.target.value)})} className="w-16 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-[10px] text-center font-bold" placeholder="Std" />
-                              <input type="number" step="0.1" value={newTolerances[fk] ?? ''} onChange={e => setNewTolerances({...newTolerances, [fk]: e.target.value === '' ? undefined : parseFloat(e.target.value)})} className="w-16 bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-400 text-[10px] text-center font-bold" placeholder="±" />
+                              <div className="flex items-center gap-1">
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                      const isMaxMode = newTolerances[fk] === '<';
+                                      setNewTolerances({...newTolerances, [fk]: isMaxMode ? getDefaultTolerance(fk) : '<'});
+                                  }}
+                                  className={`w-6 flex items-center justify-center rounded-lg border border-slate-700 p-2 text-[10px] font-bold ${newTolerances[fk] === '<' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-900 text-slate-500'}`}
+                                >
+                                  {newTolerances[fk] === '<' ? '≤' : '±'}
+                                </button>
+                                {newTolerances[fk] !== '<' && (
+                                  <input type="number" step="0.1" value={newTolerances[fk] ?? ''} onChange={e => setNewTolerances({...newTolerances, [fk]: e.target.value === '' ? undefined : parseFloat(e.target.value)})} className="w-12 bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-400 text-[10px] text-center font-bold" placeholder="tol" />
+                                )}
+                              </div>
                             </div>
                         ))}
                       </div>

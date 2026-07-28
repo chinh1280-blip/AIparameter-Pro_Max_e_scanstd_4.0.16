@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { LogEntry, ProductPreset, getDefaultTolerance, Machine } from '../types';
+import { LogEntry, ProductPreset, getDefaultTolerance, Machine, checkAlert } from '../types';
 import { 
   Search, BarChart3, ChevronDown, ChevronUp, 
   AlertCircle, CheckCircle2, History, RefreshCw, TrendingUp,
@@ -64,7 +64,7 @@ const parseLogDate = (dateStr: any): Date | null => {
     const month = parseInt(match[2]) - 1;
     let year = parseInt(match[3]);
     if (year < 100) year += 2000;
-    const timePart = (match[4] || "").trim();
+    const timePart = (match[4] || "").replace(/[^0-9:]/g, '').trim();
     let h = 0, m = 0, s = 0;
     if (timePart) {
       const t = timePart.split(':');
@@ -361,8 +361,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <KpiCard icon={<History className="text-blue-400" />} label="Tổng bản ghi" value={filteredLogs.length} trend="Bản ghi" />
-        <KpiCard icon={<AlertCircle className="text-red-400" />} label="Lỗi vượt ngưỡng" value={filteredLogs.filter(l => allFields.some(f => Math.abs(getLogValue(l, f, 'Diff')) > (presets.find(p => p.productName === getLogProductName(l))?.tolerances?.[f] || getDefaultTolerance(f)))).length} trend="Cảnh báo" color="red" />
-        <KpiCard icon={<BarChart3 className="text-green-400" />} label="Hiệu suất" value={filteredLogs.length > 0 ? (100 - (filteredLogs.filter(l => allFields.some(f => Math.abs(getLogValue(l, f, 'Diff')) > (presets.find(p => p.productName === getLogProductName(l))?.tolerances?.[f] || getDefaultTolerance(f)))).length / filteredLogs.length * 100)).toFixed(1) : 0} trend="Phần trăm đạt" unit="%" color="green" />
+        <KpiCard icon={<AlertCircle className="text-red-400" />} label="Lỗi vượt ngưỡng" value={filteredLogs.filter(l => allFields.some(f => checkAlert(getLogValue(l, f, 'Act'), getLogValue(l, f, 'Std'), presets.find(p => p.productName === getLogProductName(l))?.tolerances?.[f], getDefaultTolerance(f)))).length} trend="Cảnh báo" color="red" />
+        <KpiCard icon={<BarChart3 className="text-green-400" />} label="Hiệu suất" value={filteredLogs.length > 0 ? (100 - (filteredLogs.filter(l => allFields.some(f => checkAlert(getLogValue(l, f, 'Act'), getLogValue(l, f, 'Std'), presets.find(p => p.productName === getLogProductName(l))?.tolerances?.[f], getDefaultTolerance(f)))).length / filteredLogs.length * 100)).toFixed(1) : 0} trend="Phần trăm đạt" unit="%" color="green" />
       </div>
 
       {/* Statistics Tables */}
@@ -402,7 +402,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
                       if (logDate.getMonth() === now.getMonth() && logDate.getFullYear() === now.getFullYear()) m++;
                     }
                     
-                    const hasAlert = allFields.some(f => Math.abs(getLogValue(log, f, 'Diff')) > (presets.find(p => p.productName === getLogProductName(log))?.tolerances?.[f] || getDefaultTolerance(f)));
+                    const hasAlert = allFields.some(f => checkAlert(getLogValue(log, f, 'Act'), getLogValue(log, f, 'Std'), presets.find(p => p.productName === getLogProductName(log))?.tolerances?.[f], getDefaultTolerance(f)));
                     if (hasAlert) fail++; else pass++;
                   });
 
@@ -461,7 +461,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
                       if (logDate.getMonth() === now.getMonth() && logDate.getFullYear() === now.getFullYear()) m++;
                     }
                     
-                    const hasAlert = allFields.some(f => Math.abs(getLogValue(log, f, 'Diff')) > (presets.find(p => p.productName === getLogProductName(log))?.tolerances?.[f] || getDefaultTolerance(f)));
+                    const hasAlert = allFields.some(f => checkAlert(getLogValue(log, f, 'Act'), getLogValue(log, f, 'Std'), presets.find(p => p.productName === getLogProductName(log))?.tolerances?.[f], getDefaultTolerance(f)));
                     if (hasAlert) fail++; else pass++;
                   });
 
@@ -779,7 +779,7 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
     });
   }, [log, availableFields]);
 
-  const hasAlert = logDataKeys.some(f => Math.abs(getLogValue(log, f, 'Diff')) > (currentPreset?.tolerances?.[f] ?? getDefaultTolerance(f)));
+  const hasAlert = logDataKeys.some(f => checkAlert(getLogValue(log, f, 'Act'), getLogValue(log, f, 'Std'), currentPreset?.tolerances?.[f], getDefaultTolerance(f)));
 
   return (
     <div className={`bg-slate-900 border ${isOpen ? 'border-blue-500/50' : 'border-slate-800'} rounded-3xl overflow-hidden transition-all shadow-md`}>
@@ -819,19 +819,36 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
                 }
 
                 const rawTol = currentPreset?.tolerances?.[f];
-                const tol = (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(f);
+                const isMaxMode = rawTol === '<';
+                const tol = isMaxMode ? getDefaultTolerance(f) : (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(f);
                 const diffAbs = Math.abs(diff);
 
                 let borderColor = 'border-slate-800';
-                if (diffAbs <= tol / 2) {
-                    borderColor = 'border-green-500 shadow-[0_0_10px_-2px_rgba(34,197,94,0.3)]';
-                } else if (diffAbs <= tol) {
-                    borderColor = 'border-yellow-500 shadow-[0_0_10px_-2px_rgba(234,179,8,0.3)]';
+                let color = 'text-green-400';
+                let isAlert = false;
+                
+                if (isMaxMode) {
+                    if (val <= std) {
+                        borderColor = 'border-green-500 shadow-[0_0_10px_-2px_rgba(34,197,94,0.3)]';
+                        color = 'text-green-400';
+                    } else {
+                        borderColor = 'border-red-500 shadow-[0_0_10px_-2px_rgba(239,68,68,0.3)]';
+                        color = 'text-red-400';
+                        isAlert = true;
+                    }
                 } else {
-                    borderColor = 'border-red-500 shadow-[0_0_10px_-2px_rgba(239,68,68,0.3)]';
+                    if (diffAbs <= tol / 2) {
+                        borderColor = 'border-green-500 shadow-[0_0_10px_-2px_rgba(34,197,94,0.3)]';
+                        color = 'text-green-400';
+                    } else if (diffAbs <= tol) {
+                        borderColor = 'border-yellow-500 shadow-[0_0_10px_-2px_rgba(234,179,8,0.3)]';
+                        color = 'text-yellow-400';
+                    } else {
+                        borderColor = 'border-red-500 shadow-[0_0_10px_-2px_rgba(239,68,68,0.3)]';
+                        color = 'text-red-400';
+                        isAlert = true;
+                    }
                 }
-
-                const color = diffAbs <= tol / 2 ? 'text-green-400' : (diffAbs <= tol ? 'text-yellow-400' : 'text-red-400');
 
                 return (
                   <div key={f} className={`bg-slate-900/80 p-3 rounded-2xl border ${borderColor} flex flex-col justify-between transition-all`}>
@@ -842,7 +859,7 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
                     </div>
                     <div className="flex justify-between items-center text-[7px] text-slate-600 font-bold uppercase tracking-tighter">
                       <span>S: {std}</span>
-                      <span>±{tol}</span>
+                      <span>{isMaxMode ? "≤" : "±"}{isMaxMode ? std : tol}</span>
                     </div>
                   </div>
                 );
@@ -861,19 +878,36 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
                 }
 
                 const rawTol = currentPreset?.tolerances?.[f];
-                const tol = (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(f);
+                const isMaxMode = rawTol === '<';
+                const tol = isMaxMode ? getDefaultTolerance(f) : (rawTol !== undefined && rawTol !== null && rawTol !== "") ? parseFloat(String(rawTol)) : getDefaultTolerance(f);
                 const diffAbs = Math.abs(diff);
 
                 let borderColor = 'border-slate-800';
-                if (diffAbs <= tol / 2) {
-                    borderColor = 'border-green-500 shadow-[0_0_10px_-2px_rgba(34,197,94,0.3)]';
-                } else if (diffAbs <= tol) {
-                    borderColor = 'border-yellow-500 shadow-[0_0_10px_-2px_rgba(234,179,8,0.3)]';
+                let color = 'text-green-400';
+                let isAlert = false;
+                
+                if (isMaxMode) {
+                    if (val <= std) {
+                        borderColor = 'border-green-500 shadow-[0_0_10px_-2px_rgba(34,197,94,0.3)]';
+                        color = 'text-green-400';
+                    } else {
+                        borderColor = 'border-red-500 shadow-[0_0_10px_-2px_rgba(239,68,68,0.3)]';
+                        color = 'text-red-400';
+                        isAlert = true;
+                    }
                 } else {
-                    borderColor = 'border-red-500 shadow-[0_0_10px_-2px_rgba(239,68,68,0.3)]';
+                    if (diffAbs <= tol / 2) {
+                        borderColor = 'border-green-500 shadow-[0_0_10px_-2px_rgba(34,197,94,0.3)]';
+                        color = 'text-green-400';
+                    } else if (diffAbs <= tol) {
+                        borderColor = 'border-yellow-500 shadow-[0_0_10px_-2px_rgba(234,179,8,0.3)]';
+                        color = 'text-yellow-400';
+                    } else {
+                        borderColor = 'border-red-500 shadow-[0_0_10px_-2px_rgba(239,68,68,0.3)]';
+                        color = 'text-red-400';
+                        isAlert = true;
+                    }
                 }
-
-                const color = diffAbs <= tol / 2 ? 'text-green-400' : (diffAbs <= tol ? 'text-yellow-400' : 'text-red-400');
 
                 return (
                   <div key={f} className={`bg-slate-900/80 px-3 py-2 rounded-xl border ${borderColor} flex items-center justify-between transition-all gap-2`}>
@@ -882,8 +916,8 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
                       <span className={`text-xs font-black ${color} w-12 text-right`}>{val}</span>
                       <div className="flex items-center border-l border-slate-700 pl-1.5 ml-1 gap-1.5">
                         <span className="text-[10px] text-slate-500 font-bold">{std}</span>
-                        <span className="text-[9px] text-slate-600 font-bold">±{tol}</span>
-                        {diffAbs <= tol ? (
+                        <span className="text-[9px] text-slate-600 font-bold">{isMaxMode ? "≤" : "±"}{isMaxMode ? std : tol}</span>
+                        {!isAlert ? (
                           <div className="w-[18px] h-[18px] rounded-full bg-green-500 flex items-center justify-center">
                             <Check size={11} className="text-white" strokeWidth={4} />
                           </div>

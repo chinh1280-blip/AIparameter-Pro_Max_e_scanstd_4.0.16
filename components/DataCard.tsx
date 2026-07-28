@@ -18,7 +18,7 @@ interface DataCardProps {
   dataKey: string;
   value: number | null;
   standardValue?: number;
-  tolerance?: number;
+  tolerance?: number | string;
   onChange: (key: string, value: number | null) => void;
   fieldLabels: Record<string, string>;
   themeMode?: string;
@@ -70,7 +70,7 @@ export const DataCard: React.FC<DataCardProps> = React.memo(({ dataKey, value, s
           {standardValue !== undefined && (
             <span className="text-[10px] font-black uppercase leading-none whitespace-nowrap">
               <span className="text-green-500">{standardValue}</span>
-              <span className="text-slate-500 ml-0.5">±{activeTolerance}</span>
+              {isMaxMode ? <span className="text-slate-500 ml-0.5">≤</span> : <span className="text-slate-500 ml-0.5">±{activeTolerance}</span>}
             </span>
           )}
           {statusIcon}

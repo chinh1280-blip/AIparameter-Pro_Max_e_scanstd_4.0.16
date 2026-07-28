@@ -73,7 +73,7 @@ export interface ProcessingState {
 }
 
 export interface StandardDataMap {
-  [key: string]: number | undefined;
+  [key: string]: number | string | undefined;
 }
 
 export interface ProductPreset {
@@ -144,4 +144,16 @@ export const getDefaultTolerance = (fieldKey: string): number => {
   if (['unwind2', 'rewind', 'unwind1', 'infeed', 'oven'].includes(fieldKey)) return 2;
   if (['dryer1', 'dryer2', 'dryer3', 'chillerTemp', 'axisTemp'].includes(fieldKey)) return 5;
   return 2;
+};
+
+export const checkAlert = (actValue: number, stdValue: number, tol: number | string | undefined, defaultTol: number): boolean => {
+  if (actValue === undefined || actValue === null) return false;
+  if (stdValue === undefined || stdValue === null) return false;
+  
+  if (tol === '<') {
+    return actValue > stdValue; // Alert if act > std
+  }
+  
+  const tolerance = (typeof tol === 'number') ? tol : defaultTol;
+  return Math.abs(actValue - stdValue) > tolerance;
 };
