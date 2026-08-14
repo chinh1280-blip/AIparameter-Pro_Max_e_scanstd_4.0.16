@@ -31,8 +31,8 @@ const getLogStructure = (log: any) => {
     return log.structure || log["Structure"] || log["Cấu trúc"] || "N/A";
 };
 
-const getLogValue = (log: any, fieldKey: string, type: 'Act' | 'Std' | 'Diff' = 'Act'): number => {
-  if (!log) return 0;
+const getLogValue = (log: any, fieldKey: string, type: 'Act' | 'Std' | 'Diff' = 'Act'): number | null => {
+  if (!log) return null;
   const suffix = type.toLowerCase();
   const targetKey = `${fieldKey}_${suffix}`;
   let val = log[targetKey];
@@ -44,13 +44,40 @@ const getLogValue = (log: any, fieldKey: string, type: 'Act' | 'Std' | 'Diff' = 
   return parseNumericValue(val);
 };
 
-const parseNumericValue = (val: any): number => {
-  if (val === undefined || val === null || val === "") return 0;
+const parseNumericValue = (val: any): number | null => {
+  if (val === undefined || val === null || val === "") return null;
   if (typeof val === 'number') return val;
   let str = String(val).trim().replace(',', '.');
   str = str.replace(/[^-0-9.]/g, '');
+  if (str === '') return null;
   const parsed = parseFloat(str);
-  return isNaN(parsed) ? 0 : parsed;
+  return isNaN(parsed) ? null : parsed;
+};
+
+
+const isLogFailed = (log: any, presets: any[], availableFields: string[]) => {
+  const pName = getLogProductName(log);
+  const sName = getLogStructure(log);
+  const pStd = log.productStd || log["Product_Std"] || log["ProductStd"] || pName;
+  const sStd = log.structureStd || log["Structure_Std"] || log["StructureStd"] || sName;
+  const mId = log.machineId || log["MachineID"] || log["Máy"] || log["machine_id"];
+
+  const currentPreset = presets.find(p => p.productName === pStd && p.structure === sStd && (!p.machineId || p.machineId === mId)) 
+    || presets.find(p => p.productName === pStd && (!p.machineId || p.machineId === mId))
+    || presets.find(p => p.productName === pStd)
+    || presets.find(p => p.productName === pName);
+
+  const logDataKeys = availableFields.filter(f => {
+    const val = getLogValue(log, f, 'Act');
+    return val !== null;
+  });
+
+  return logDataKeys.some(f => {
+    const actVal = getLogValue(log, f, 'Act');
+    const stdVal = getLogValue(log, f, 'Std');
+    if (actVal === null || stdVal === null) return false;
+    return checkAlert(actVal, stdVal, currentPreset?.tolerances?.[f], getDefaultTolerance(f));
+  });
 };
 
 const parseLogDate = (dateStr: any): Date | null => {
@@ -261,7 +288,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
 
   const chartData = useMemo(() => {
     const tol = activeToleranceValue;
-    return [...filteredLogs].slice(0, 20).reverse().map(log => {
+    const logsWithField = filteredLogs.filter(log => getLogValue(log, selectedChartField, 'Act') !== null);
+    return [...logsWithField].slice(0, 20).reverse().map(log => {
       const logDate = parseLogDate(log.timestamp || log["Timestamp"] || log["Thời gian"]);
       const timeStr = logDate ? `${logDate.getDate()}/${logDate.getMonth() + 1} ${logDate.getHours()}:${String(logDate.getMinutes()).padStart(2, '0')}` : "--/--";
       
@@ -270,8 +298,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
       const year = logDate ? String(logDate.getFullYear()).slice(-2) : "--";
       const dateShort = `${day}/${month}/${year}`;
 
-      const actValue = getLogValue(log, selectedChartField, 'Act');
-      const stdValue = getLogValue(log, selectedChartField, 'Std');
+      const actValue = getLogValue(log, selectedChartField, 'Act') || 0;
+      const stdValue = getLogValue(log, selectedChartField, 'Std') || 0;
       const diffVal = parseFloat((actValue - stdValue).toFixed(1));
       let diffPercent = stdValue > 0 ? ((actValue - stdValue) / stdValue) * 100 : 0;
 
@@ -347,7 +375,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
             >
                <Layers size={14} /> Tất cả máy
             </button>
-            {machines.map(m => (
+            {machines.filter(m => m.isVisible !== false).map(m => (
               <button 
                 key={m.id}
                 onClick={() => setFilterMachineId(m.id)}
@@ -361,8 +389,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <KpiCard icon={<History className="text-blue-400" />} label="Tổng bản ghi" value={filteredLogs.length} trend="Bản ghi" />
-        <KpiCard icon={<AlertCircle className="text-red-400" />} label="Lỗi vượt ngưỡng" value={filteredLogs.filter(l => allFields.some(f => checkAlert(getLogValue(l, f, 'Act'), getLogValue(l, f, 'Std'), presets.find(p => p.productName === getLogProductName(l))?.tolerances?.[f], getDefaultTolerance(f)))).length} trend="Cảnh báo" color="red" />
-        <KpiCard icon={<BarChart3 className="text-green-400" />} label="Hiệu suất" value={filteredLogs.length > 0 ? (100 - (filteredLogs.filter(l => allFields.some(f => checkAlert(getLogValue(l, f, 'Act'), getLogValue(l, f, 'Std'), presets.find(p => p.productName === getLogProductName(l))?.tolerances?.[f], getDefaultTolerance(f)))).length / filteredLogs.length * 100)).toFixed(1) : 0} trend="Phần trăm đạt" unit="%" color="green" />
+        <KpiCard icon={<AlertCircle className="text-red-400" />} label="Lỗi vượt ngưỡng" value={filteredLogs.filter(l => isLogFailed(l, presets, allFields)).length} trend="Cảnh báo" color="red" />
+        <KpiCard icon={<BarChart3 className="text-green-400" />} label="Hiệu suất" value={filteredLogs.length > 0 ? (100 - (filteredLogs.filter(l => isLogFailed(l, presets, allFields)).length / filteredLogs.length * 100)).toFixed(1) : 0} trend="Phần trăm đạt" unit="%" color="green" />
       </div>
 
       {/* Statistics Tables */}
@@ -402,7 +430,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
                       if (logDate.getMonth() === now.getMonth() && logDate.getFullYear() === now.getFullYear()) m++;
                     }
                     
-                    const hasAlert = allFields.some(f => checkAlert(getLogValue(log, f, 'Act'), getLogValue(log, f, 'Std'), presets.find(p => p.productName === getLogProductName(log))?.tolerances?.[f], getDefaultTolerance(f)));
+                    const hasAlert = isLogFailed(log, presets, allFields);
                     if (hasAlert) fail++; else pass++;
                   });
 
@@ -445,7 +473,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
                 </tr>
               </thead>
               <tbody className="text-xs">
-                {machines.map(machine => {
+                {machines.filter(m => m.isVisible !== false).map(machine => {
                   const machineLogs = (Array.isArray(logs) ? logs : []).filter(l => (l.machineId || l["MachineID"] || l["Máy"] || l["machine_id"]) === machine.id);
                   
                   let d = 0, w = 0, m = 0, pass = 0, fail = 0;
@@ -461,7 +489,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
                       if (logDate.getMonth() === now.getMonth() && logDate.getFullYear() === now.getFullYear()) m++;
                     }
                     
-                    const hasAlert = allFields.some(f => checkAlert(getLogValue(log, f, 'Act'), getLogValue(log, f, 'Std'), presets.find(p => p.productName === getLogProductName(log))?.tolerances?.[f], getDefaultTolerance(f)));
+                    const hasAlert = isLogFailed(log, presets, allFields);
                     if (hasAlert) fail++; else pass++;
                   });
 
@@ -775,7 +803,7 @@ const LogCard: React.FC<{ log: any, availableFields: string[], presets: ProductP
   const logDataKeys = useMemo(() => {
     return availableFields.filter(f => {
       const val = getLogValue(log, f, 'Act');
-      return val !== 0 || log[f] !== undefined;
+      return val !== null;
     });
   }, [log, availableFields]);
 

@@ -146,7 +146,7 @@ export const getDefaultTolerance = (fieldKey: string): number => {
   return 2;
 };
 
-export const checkAlert = (actValue: number, stdValue: number, tol: number | string | undefined, defaultTol: number): boolean => {
+export const checkAlert = (actValue: number | null, stdValue: number | null, tol: number | string | undefined, defaultTol: number): boolean => {
   if (actValue === undefined || actValue === null) return false;
   if (stdValue === undefined || stdValue === null) return false;
   
@@ -154,6 +154,6 @@ export const checkAlert = (actValue: number, stdValue: number, tol: number | str
     return actValue > stdValue; // Alert if act > std
   }
   
-  const tolerance = (typeof tol === 'number') ? tol : defaultTol;
+  const tolerance = (tol !== undefined && tol !== null && String(tol).trim() !== '') ? parseFloat(String(tol)) : defaultTol;
   return Math.abs(actValue - stdValue) > tolerance;
 };

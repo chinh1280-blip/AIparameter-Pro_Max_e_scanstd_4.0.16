@@ -203,8 +203,18 @@ export const ZoneView: React.FC<ZoneViewProps> = React.memo(({
       const std = standardData[key];
       if (val !== null && std !== undefined) {
         totalChecked++;
-        const tol = currentPreset?.tolerances?.[key] ?? getDefaultTolerance(key);
-        if (Math.abs((val as number) - std) <= tol) {
+        const rawTol = currentPreset?.tolerances?.[key];
+        const isMaxMode = rawTol === '<';
+        const tol = isMaxMode ? getDefaultTolerance(key) : (rawTol ?? getDefaultTolerance(key));
+        
+        let isCorrect = true;
+        if (isMaxMode) {
+            isCorrect = (val as number) <= std;
+        } else {
+            isCorrect = Math.abs((val as number) - std) <= (tol as number);
+        }
+
+        if (isCorrect) {
           passCount++;
         } else {
           failCount++;
@@ -442,8 +452,15 @@ export const ZoneView: React.FC<ZoneViewProps> = React.memo(({
               const std = standardData[key];
               if (val === null) return true; // Missing is fail
               if (std === undefined) return false; // No standard -> can't fail
-              const tol = currentPreset?.tolerances?.[key] ?? getDefaultTolerance(key);
-              return Math.abs(val - std) > tol;
+              const rawTol = currentPreset?.tolerances?.[key];
+              const isMaxMode = rawTol === '<';
+              const tol = isMaxMode ? getDefaultTolerance(key) : (rawTol ?? getDefaultTolerance(key));
+              
+              if (isMaxMode) {
+                  return val > std;
+              } else {
+                  return Math.abs(val - std) > (tol as number);
+              }
             });
 
             if (filteredDataEntries.length === 0) {
