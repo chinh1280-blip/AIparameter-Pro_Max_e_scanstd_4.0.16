@@ -203,7 +203,21 @@ const App: React.FC = () => {
     try {
       const response = await fetch(`${googleSheetUrl}${googleSheetUrl.includes('?') ? '&' : '?'}action=sync&t=${Date.now()}`);
       if (response.ok) {
-        const resData = await response.json();
+        const responseText = await response.text();
+        let resData;
+        try {
+          resData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("Failed to parse JSON. Raw response:", responseText);
+          showToast("Lỗi dữ liệu từ Google Sheet (Có thể bị quá tải). Vui lòng thử lại sau.", "error");
+          setIsRefreshing(false);
+          return;
+        }
+        if (resData.error) {
+          console.error("Backend Error:", resData.error);
+          showToast(resData.error, "error");
+          return;
+        }
         if (resData.presets) {
           const uniquePresets = Array.from(new Map((resData.presets as ProductPreset[]).map(p => [p.id, p])).values());
           setPresets(uniquePresets);

@@ -44,7 +44,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, google
       if (isLoginMode) {
           const verifyUrl = `${googleSheetUrl}${googleSheetUrl.includes('?') ? '&' : '?'}action=verify_user&u=${encodeURIComponent(username)}&p=${encodeURIComponent(password)}`;
           const verifyRes = await fetch(verifyUrl);
-          const verifyData = await verifyRes.json();
+          const responseText = await verifyRes.text();
+          let verifyData;
+          try {
+            verifyData = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error("Failed to parse JSON on login. Raw response:", responseText);
+            setError("Google Sheet phản hồi lỗi (Quá tải hoặc sai URL). Vui lòng thử lại.");
+            setIsLoading(false);
+            return;
+          }
+          if (verifyData.error) {
+             setError(verifyData.error);
+             return;
+          }
           
           if (verifyData.success) {
              onLoginSuccess(verifyData.user);

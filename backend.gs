@@ -9,9 +9,14 @@
 function doGet(e) {
   if (!e || !e.parameter) return ContentService.createTextOutput("Service Active").setMimeType(ContentService.MimeType.TEXT);
   const action = e.parameter.action;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
   
-  if (action === "sync") {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, error: "LỖI: Script chưa được liên kết với Google Sheet. Vui lòng mở Google Sheet > Tiện ích mở rộng > Apps Script và dán code vào đó." })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    if (action === "sync") {
     const machines = getMachines(ss);
     let allPresets = [];
     let allLogs = [];
@@ -36,16 +41,25 @@ function doGet(e) {
       productStructures: productStructures
     })).setMimeType(ContentService.MimeType.JSON);
   } else if (action === "verify_user") {
-    const u = e.parameter.u;
-    const p = e.parameter.p;
-    const result = verifyUser(ss, u, p);
-    return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+      const u = e.parameter.u;
+      const p = e.parameter.p;
+      const result = verifyUser(ss, u, p);
+      return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: "Action not found" })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
 function doPost(e) {
-  const data = JSON.parse(e.postData.contents);
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, error: "LỖI: Script chưa được liên kết với Google Sheet." })).setMimeType(ContentService.MimeType.JSON);
+    }
   
   if (data.action === "save_standard") {
     saveStandard(ss, data);
