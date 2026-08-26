@@ -82,6 +82,7 @@ export const analyzeImage = async (
   processingProfileId?: string,
   processingProfiles?: any[]
 ): Promise<any> => {
+  window.dispatchEvent(new CustomEvent('gemini-api-start'));
   const activeKey = apiKeyOverride || process.env.API_KEY;
   
   if (!activeKey) {
@@ -209,10 +210,13 @@ export const analyzeImage = async (
     const text = response.text;
     if (!text) throw new Error("AI không phản hồi dữ liệu hoặc hình ảnh không rõ ràng.");
 
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    window.dispatchEvent(new CustomEvent('gemini-api-success'));
+    return parsed;
   } catch (error: any) {
     console.error(`Gemini API Error:`, error);
     const msg = error.message?.toLowerCase() || '';
+    window.dispatchEvent(new CustomEvent('gemini-api-error', { detail: error.message || "Unknown Gemini API Error" }));
 
     if (msg.includes("invalid argument") || msg.includes("schema")) {
       throw new Error("Error: Invalid schema format / Lỗi cấu hình Schema\nSolution: Check Output");

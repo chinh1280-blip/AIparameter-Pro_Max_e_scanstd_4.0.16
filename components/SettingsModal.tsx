@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Save, Link, Plus, Trash2, Check, Layers, RefreshCw, Key, BrainCircuit, Edit3, Trash, Settings2, Box, Search, Copy, Tag, Database, Cloud, Cpu, Monitor, Scan, Lock, Palette, Sun, Moon, Type, Info, Sliders, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Eye, EyeOff } from 'lucide-react';
+import { X, Save, Link, Plus, Trash2, Check, Layers, RefreshCw, Key, BrainCircuit, Edit3, Trash, Settings2, Box, Search, Copy, Tag, Database, Cloud, Cpu, Monitor, Scan, Lock, Palette, Sun, Moon, Type, Info, Sliders, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Eye, EyeOff, Smartphone, Maximize } from 'lucide-react';
 import { StandardDataMap, ProductPreset, ModelConfig, Machine, ZoneDefinition, ScanConfig, UIConfig, DEFAULT_UI_CONFIG, ImageProcessingProfile, DEFAULT_PROCESSING_PROFILES, getDefaultTolerance } from '../types';
 import { analyzeImage } from '../services/geminiService';
 
@@ -1000,6 +1000,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             >
                                 <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${uiConfig.showProcessedImage ? 'translate-x-6' : 'translate-x-0'}`} />
                             </button>
+                        </div>
+
+                        {/* Android PWA & Fullscreen Guide */}
+                        <div className="mb-6 bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Smartphone size={16} className="text-emerald-400" />
+                                <h4 className="text-[11px] font-black text-white uppercase">Chế độ Toàn Màn Hình (Ẩn thanh link)</h4>
+                            </div>
+                            <p className="text-[10px] text-slate-300 leading-relaxed">
+                                Để ẩn hoàn toàn thanh địa chỉ trình duyệt trên <strong>Android</strong> và chống tự động kéo tải lại trang (Pull-to-refresh):
+                            </p>
+                            <div className="bg-slate-900/90 rounded-lg p-3 border border-slate-800 text-[10px] text-slate-300 space-y-2">
+                                <div className="flex items-start gap-2">
+                                    <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[9px] shrink-0 mt-0.5">1</span>
+                                    <span><strong>Cách 1 (Khuyên dùng - Giống App thật):</strong> Trên Chrome Android, bấm menu <strong>3 chấm (⋮)</strong> ở góc trên bên phải &gt; Chọn <strong>"Cài đặt ứng dụng"</strong> hoặc <strong>"Thêm vào Màn hình chính"</strong>. Mở từ icon ngoài màn hình sẽ ẩn 100% thanh link.</span>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                    <span className="w-4 h-4 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-[9px] shrink-0 mt-0.5">2</span>
+                                    <span><strong>Cách 2 (Nhanh):</strong> Bấm vào biểu tượng <strong>Toàn màn hình</strong> (<Maximize size={10} className="inline text-emerald-400 mx-0.5" />) ở thanh trên cùng của ứng dụng.</span>
+                                </div>
+                            </div>
                         </div>
 
                         <button 

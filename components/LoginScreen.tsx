@@ -43,17 +43,38 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, google
     try {
       if (isLoginMode) {
           const verifyUrl = `${googleSheetUrl}${googleSheetUrl.includes('?') ? '&' : '?'}action=verify_user&u=${encodeURIComponent(username)}&p=${encodeURIComponent(password)}`;
-          const verifyRes = await fetch(verifyUrl);
-          const responseText = await verifyRes.text();
-          let verifyData;
-          try {
-            verifyData = JSON.parse(responseText);
-          } catch (parseError) {
-            console.error("Failed to parse JSON on login. Raw response:", responseText);
-            setError("Google Sheet phản hồi lỗi (Quá tải hoặc sai URL). Vui lòng thử lại.");
+          let verifyData = null;
+        let success = false;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const verifyRes = await fetch(verifyUrl);
+                const responseText = await verifyRes.text();
+                try {
+                    verifyData = JSON.parse(responseText);
+                    success = true;
+                    break;
+                } catch (parseError) {
+                    console.warn(`Login attempt ${attempt} received HTML instead of JSON.`);
+                    if (attempt === 3) {
+                        console.error("Final attempt raw response:", responseText);
+                        setError("Google chặn phản hồi (Do quá tải hoặc trình duyệt đang đăng nhập nhiều tài khoản Google). Vui lòng thử trên tab Ẩn danh.");
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn(`Login attempt ${attempt} error:`, err);
+            }
+            if (!success && attempt < 3) {
+                await new Promise(r => setTimeout(r, 1500 * attempt));
+            }
+        }
+        
+        if (!success || !verifyData) {
+            setError("Không thể kết nối đến Google Sheet. Vui lòng thử lại.");
             setIsLoading(false);
             return;
-          }
+        }
           if (verifyData.error) {
              setError(verifyData.error);
              return;

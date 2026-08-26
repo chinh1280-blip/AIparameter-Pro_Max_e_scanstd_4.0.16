@@ -231,6 +231,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
   }, [machineSpecificFields, selectedChartField]);
 
   const [filterUser, setFilterUser] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   const availableUsers = useMemo(() => {
     const rawData = Array.isArray(logs) ? logs : [];
@@ -253,8 +254,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
         const user = log.uploadedBy || log["User"] || log["Người gửi"] || "N/A";
         const matchesUser = filterUser === 'all' || user === filterUser;
         
+        let matchesStatus = true;
+        if (filterStatus !== 'all') {
+           const hasAlert = isLogFailed(log, presets, Array.from(allFields));
+           if (filterStatus === 'pass') matchesStatus = !hasAlert;
+           if (filterStatus === 'fail') matchesStatus = hasAlert;
+        }
+        
         const logDate = parseLogDate(log.timestamp || log["Timestamp"] || log["Thời gian"]);
-        if (!logDate) return matchesSearch && matchesProduct && matchesMachine && matchesUser;
+        if (!logDate) return matchesSearch && matchesProduct && matchesMachine && matchesUser && matchesStatus;
 
         const d_log_ts = new Date(logDate.getFullYear(), logDate.getMonth(), logDate.getDate()).getTime();
         if (startDate) {
@@ -266,14 +274,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
           if (d_log_ts > new Date(e.getFullYear(), e.getMonth(), e.getDate()).getTime()) return false;
         }
 
-        return matchesSearch && matchesProduct && matchesMachine && matchesUser;
+        return matchesSearch && matchesProduct && matchesMachine && matchesUser && matchesStatus;
       })
       .sort((a, b) => {
         const dateA = parseLogDate(a.timestamp || a["Timestamp"] || a["Thời gian"])?.getTime() || 0;
         const dateB = parseLogDate(b.timestamp || b["Timestamp"] || b["Thời gian"])?.getTime() || 0;
         return dateB - dateA;
       });
-  }, [logs, searchTerm, filterProduct, filterMachineId, filterUser, startDate, endDate]);
+  }, [logs, searchTerm, filterProduct, filterMachineId, filterUser, filterStatus, startDate, endDate, presets, allFields]);
 
   const selectedPreset = useMemo(() => {
     if (filterProduct === 'all') return null;
@@ -516,7 +524,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
 
       {/* Main Chart Section */}
       <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl space-y-4 shadow-xl">
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-7 gap-2">
           <div className="relative group col-span-2 lg:col-span-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
             <input type="text" placeholder="Tìm sản phẩm..." className="w-full bg-slate-800/50 border border-slate-700 rounded-xl py-2 pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-blue-500/30 transition-all text-white" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
@@ -532,6 +540,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ logs, presets, machines, o
             <select className="w-full appearance-none bg-slate-800/50 border border-slate-700 rounded-xl py-2 px-3 pr-8 text-xs outline-none focus:ring-1 focus:ring-blue-500/30 transition-all text-white" value={filterUser} onChange={e => setFilterUser(e.target.value)}>
               <option value="all">Tất cả người gửi</option>
               {availableUsers.map(u => <option key={u as string} value={u as string}>{u as string}</option>)}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={14} />
+          </div>
+          <div className="relative">
+            <select className="w-full appearance-none bg-slate-800/50 border border-slate-700 rounded-xl py-2 px-3 pr-8 text-xs outline-none focus:ring-1 focus:ring-blue-500/30 transition-all text-white font-bold" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="all">Tất cả kết quả</option>
+              <option value="pass" className="text-green-500">Đạt (Pass)</option>
+              <option value="fail" className="text-red-500">Lỗi (Fail)</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={14} />
           </div>

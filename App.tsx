@@ -3,9 +3,10 @@ import { ZoneView } from './components/ZoneView';
 import { SettingsModal } from './components/SettingsModal';
 import { UserGuideModal } from './components/UserGuideModal';
 import { Dashboard } from './components/Dashboard';
+import { NetworkDiagnostic } from './components/NetworkDiagnostic';
 import { LoginScreen } from './components/LoginScreen';
 import { ProcessingState, ProductPreset, ModelConfig, LogEntry, Machine, FIELD_LABELS, ScanConfig, User, UIConfig, DEFAULT_UI_CONFIG, ImageProcessingProfile, DEFAULT_PROCESSING_PROFILES, getDefaultTolerance } from './types';
-import { Cpu, Settings, Send, BarChart3, Box, Layers, RefreshCw, Search, KeyRound, LogOut, ClipboardList, Tag, FileType, X, BookOpen, CheckCircle2, Camera, ChevronDown, ChevronRight } from 'lucide-react';
+import { Cpu, Settings, Send, BarChart3, Box, Layers, RefreshCw, Search, KeyRound, LogOut, ClipboardList, Tag, FileType, X, BookOpen, CheckCircle2, Camera, ChevronDown, ChevronRight, Maximize, Minimize } from 'lucide-react';
 
 /**
  * === TỐI ƯU TỔNG THỂ APP CHO QC LỚN TUỔI ===
@@ -109,6 +110,40 @@ const App: React.FC = () => {
     presets.find(p => p.id === currentPresetId) || null,
   [currentPresetId, presets]);
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen();
+        } else if ((document.documentElement as any).webkitRequestFullscreen) {
+          (document.documentElement as any).webkitRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        }
+      }
+    } catch (e) {
+      console.error('Fullscreen toggle error:', e);
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (headerSearchRef.current && !headerSearchRef.current.contains(event.target as Node)) {
@@ -200,22 +235,55 @@ const App: React.FC = () => {
   const fetchAllData = useCallback(async () => {
     if (!googleSheetUrl) return;
     setIsRefreshing(true);
-    try {
-      const response = await fetch(`${googleSheetUrl}${googleSheetUrl.includes('?') ? '&' : '?'}action=sync&t=${Date.now()}`);
-      if (response.ok) {
-        const responseText = await response.text();
-        let resData;
-        try {
-          resData = JSON.parse(responseText);
-        } catch (parseError) {
-          console.error("Failed to parse JSON. Raw response:", responseText);
-          showToast("Lỗi dữ liệu từ Google Sheet (Có thể bị quá tải). Vui lòng thử lại sau.", "error");
-          setIsRefreshing(false);
-          return;
+    
+    const maxRetries = 3;
+    let resData = null;
+    let success = false;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${googleSheetUrl}${googleSheetUrl.includes('?') ? '&' : '?'}action=sync&t=${Date.now()}`);
+        if (response.ok) {
+          const responseText = await response.text();
+          try {
+            resData = JSON.parse(responseText);
+            success = true;
+            window.dispatchEvent(new CustomEvent('gas-api-success'));
+            break; // Success, exit retry loop
+          } catch (parseError) {
+            console.warn(`Attempt ${attempt}: Failed to parse JSON. Raw HTML returned.`);
+            if (attempt === maxRetries) {
+              window.dispatchEvent(new CustomEvent('gas-api-error', { detail: "Failed to parse JSON" }));
+              console.error("Failed to parse JSON on final attempt. Raw response:", responseText);
+              showToast("Quá tải Google Sheet (Hoặc lỗi nhiều tài khoản). Vui lòng dùng 1 trình duyệt ẩn danh hoặc 1 tài khoản Google.", "error");
+              setIsRefreshing(false);
+              return;
+            }
+          }
+        } else {
+            console.warn(`Attempt ${attempt}: HTTP Error ${response.status}`);
         }
+      } catch (err) {
+         console.warn(`Attempt ${attempt} failed with error:`, err);
+      }
+      
+      // Wait before retry (exponential backoff: 1.5s, 3s)
+      if (!success && attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 1500 * attempt));
+      }
+    }
+    
+    if (!success || !resData) {
+       setIsRefreshing(false);
+       showToast("Không thể kết nối đến Google Sheet sau nhiều lần thử.", "error");
+       return;
+    }
+    
+    try {
         if (resData.error) {
           console.error("Backend Error:", resData.error);
           showToast(resData.error, "error");
+          setIsRefreshing(false);
           return;
         }
         if (resData.presets) {
@@ -243,7 +311,6 @@ const App: React.FC = () => {
            if (resData.appConfig.processingProfiles) setProcessingProfiles(resData.appConfig.processingProfiles);
            if (resData.appConfig.userGuideImages) setUserGuideImages(resData.appConfig.userGuideImages);
         }
-      }
     } catch (error) {
       console.error("Sync error:", error);
     } finally { setIsRefreshing(false); }
@@ -313,7 +380,9 @@ const App: React.FC = () => {
         })
       });
       showToast("Đã đồng bộ Cấu hình lên Cloud!", "success");
-    } catch (e) {
+      window.dispatchEvent(new CustomEvent('gas-api-success'));
+    } catch (e: any) {
+      window.dispatchEvent(new CustomEvent('gas-api-error', { detail: e.message || "Lỗi đồng bộ" }));
       showToast("Lỗi đồng bộ cấu hình", "error");
     }
   };
@@ -449,6 +518,7 @@ const App: React.FC = () => {
       }
 
       await fetch(googleSheetUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+      window.dispatchEvent(new CustomEvent('gas-api-success'));
       
       // === TỐI ƯU: Haptic + visual feedback ===
       if (navigator.vibrate) navigator.vibrate([100, 50, 200]);
@@ -544,6 +614,9 @@ const App: React.FC = () => {
         border-color: var(--border-color) !important;
     }
     .border-green-500 { border-color: #22c55e !important; }
+    .text-emerald-400, .text-green-400 { color: #059669 !important; }
+    .text-red-400 { color: #dc2626 !important; }
+    .text-teal-500 { color: #0f766e !important; }
     .border-yellow-500 { border-color: #eab308 !important; }
     .border-red-500 { border-color: #ef4444 !important; }
     .border-red-900\\/50 { border-color: rgba(127, 29, 29, 0.5) !important; }
@@ -731,6 +804,9 @@ const App: React.FC = () => {
                {activeView === 'capture' && (
                  <button onClick={() => setIsUserGuideOpen(true)} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-blue-400 hover:bg-slate-700 transition-colors" title="Hướng dẫn"><BookOpen size={18} className="sm:w-5 sm:h-5" /></button>
                )}
+               <button onClick={toggleFullscreen} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-emerald-400 hover:bg-slate-700 transition-colors" title={isFullscreen ? "Thu nhỏ" : "Toàn màn hình (Ẩn thanh link)"}>
+                 {isFullscreen ? <Minimize size={18} className="sm:w-5 sm:h-5" /> : <Maximize size={18} className="sm:w-5 sm:h-5" />}
+               </button>
                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors"><Settings size={18} className="sm:w-5 sm:h-5" /></button>
                <button onClick={handleLogout} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-red-400 hover:bg-slate-700 transition-colors" title="Đăng xuất"><LogOut size={18} className="sm:w-5 sm:h-5" /></button>
             </div>
@@ -1039,6 +1115,9 @@ const App: React.FC = () => {
         showToast={showToast}
         setConfirmDialog={setConfirmDialog}
       />
+      {currentUser?.role === 'admin' && (
+        <NetworkDiagnostic googleSheetUrl={googleSheetUrl} />
+      )}
     </div>
   );
 };
