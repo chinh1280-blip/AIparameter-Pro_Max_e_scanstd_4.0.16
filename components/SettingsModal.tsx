@@ -1469,7 +1469,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 >
                                     <option value="">Mặc định (Theo App)</option>
                                     <option value="gemini-flash-lite-latest">Lite</option>
-                                    <option value="gemini-flash-latest">Flash</option>
+                                    <option value="gemini-2.5-flash">Flash</option>
                                     <option value="gemini-3-pro-preview">Pro</option>
                                     {customModels.map(m => (
                                         <option key={m.id} value={m.id}>{m.name}</option>

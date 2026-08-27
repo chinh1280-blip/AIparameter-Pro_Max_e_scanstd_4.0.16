@@ -22,7 +22,7 @@ import { Cpu, Settings, Send, BarChart3, Box, Layers, RefreshCw, Search, KeyRoun
 
 const DEFAULT_MODELS: ModelConfig[] = [
   { id: 'gemini-flash-lite-latest', name: 'Lite' },
-  { id: 'gemini-flash-latest', name: 'Flash' },
+  { id: 'gemini-2.5-flash', name: 'Flash' },
   { id: 'gemini-3-pro-preview', name: 'Pro' }
 ];
 
@@ -111,6 +111,7 @@ const App: React.FC = () => {
   [currentPresetId, presets]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -804,9 +805,11 @@ const App: React.FC = () => {
                {activeView === 'capture' && (
                  <button onClick={() => setIsUserGuideOpen(true)} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-blue-400 hover:bg-slate-700 transition-colors" title="Hướng dẫn"><BookOpen size={18} className="sm:w-5 sm:h-5" /></button>
                )}
+               {!isIOS && (
                <button onClick={toggleFullscreen} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-emerald-400 hover:bg-slate-700 transition-colors" title={isFullscreen ? "Thu nhỏ" : "Toàn màn hình (Ẩn thanh link)"}>
                  {isFullscreen ? <Minimize size={18} className="sm:w-5 sm:h-5" /> : <Maximize size={18} className="sm:w-5 sm:h-5" />}
                </button>
+               )}
                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 transition-colors"><Settings size={18} className="sm:w-5 sm:h-5" /></button>
                <button onClick={handleLogout} className="p-1.5 sm:p-2.5 rounded-lg border bg-slate-800 border-slate-700 text-red-400 hover:bg-slate-700 transition-colors" title="Đăng xuất"><LogOut size={18} className="sm:w-5 sm:h-5" /></button>
             </div>
